@@ -9,6 +9,9 @@
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
 header { display: flex; align-items: baseline; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
 h1 { font-size: 17px; margin: 0; font-weight: 600; }
+header nav { margin-left: auto; }
+header nav a { color: var(--sel); text-decoration: none; font-weight: 500; }
+header nav a:hover { text-decoration: underline; }
 .muted { color: var(--muted); }
 main { display: grid; grid-template-columns: 300px 1fr; gap: 0; min-height: calc(100vh - 50px); }
 aside { border-right: 1px solid var(--line); padding: 12px 16px; overflow-y: auto; max-height: calc(100vh - 50px); }

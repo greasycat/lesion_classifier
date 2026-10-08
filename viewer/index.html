@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>M-SYNTH Lesion Heatmaps</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>M-SYNTH lesion heatmaps</h1>
+  <span id="count" class="muted"></span>
+  <nav><a href="../">Guide</a></nav>
+</header>
+<main>
+  <aside id="browser">
+    <div class="filters">
+      <label>Lesion <select id="f-lesion"><option value="">any</option><option value="1">present</option><option value="0">absent</option></select></label>
+      <label>Breast <select id="f-breast"><option value="">any</option></select></label>
+      <label>Lesion density <select id="f-ldens"><option value="">any</option></select></label>
+      <label>Radius <select id="f-radius"><option value="">any</option></select></label>
+    </div>
+    <div id="grid"></div>
+  </aside>
+  <section id="viewer">
+    <div class="controls">
+      <fieldset>
+        <label>Prevalence <select id="c-view"></select></label>
+        <label>Display <select id="c-mode"><option value="heat">heatmap</option><option value="topk">top-k boxes</option></select></label>
+      </fieldset>
+      <fieldset class="topk" id="fs-topk">
+        <label>k <input id="c-k" type="range" min="1" max="10" value="3"><output id="o-k">3</output></label>
+        <label>min p <select id="c-minp"><option>0</option><option>0.001</option><option>0.003</option><option selected>0.01</option><option>0.03</option><option>0.1</option><option>0.3</option></select></label>
+        <label>Heat <select id="c-heat"><option value="full">whole map</option><option value="boxes" selected>inside boxes</option><option value="none">none</option></select></label>
+        <label class="check"><input id="c-ranks" type="checkbox" checked> ranks</label>
+      </fieldset>
+      <fieldset>
+        <label>Colormap <select id="c-cmap"></select></label>
+        <label>Opacity <input id="c-alpha" type="range" min="0" max="1" step="0.05" value="0.7"><output id="o-alpha">0.70</output></label>
+        <label>Scale <select id="c-scale"><option value="log">log</option><option value="linear">linear</option><option value="rel">relative to shown places</option></select></label>
+        <label>Log floor <select id="c-floor"><option>0.0001</option><option selected>0.001</option><option>0.01</option></select></label>
+        <label class="check"><input id="c-outline" type="checkbox"> true lesion outline</label>
+      </fieldset>
+    </div>
+    <div class="stage">
+      <canvas id="canvas"></canvas>
+      <div class="side">
+        <canvas id="bar" width="28" height="260"></canvas>
+        <div id="bar-labels"></div>
+      </div>
+    </div>
+    <div id="info"></div>
+    <table id="places"></table>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
