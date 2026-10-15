@@ -267,9 +267,6 @@ function info(s, it, R, heat, mask) {
   $("info").textContent = t;
 }
 
-// the chosen ranking's value as a probability where it is one (a model logit), else the fused score
-const PROB_SCORERS = new Set(["z", "pc", "probe_small", "probe_mammofm"]);
-const shownValue = (score, v) => (PROB_SCORERS.has(score) ? fmtP(sigmoid(v)) : v.toFixed(2));
 
 // LLM paraphrase of the selected place (site/paraphrase_candidates.py), above the image
 function say(s, it, R) {
@@ -293,27 +290,35 @@ function bars(names, vals) {
   return names.map((n, i) => `<div class="bar-row"><span>${nice(n)}</span><i style="width:${Math.round(vals[i] * 100)}%"></i><b>${vals[i].toFixed(2)}</b></div>`).join("");
 }
 
+// the model that reads each box source: A1's candidates -> the concept model; Mammo-FM's peaks -> Mammo-FM's probes
+const READER = {
+  a1: { name: "Concept model", p: "pc", shape: "shape", margin: "margin", size: "size_mm", malig: "malig",
+        maligNote: "from its shape, margin and size reading", note: "ResNet-50 on a 40 mm crop, trained on CBIS Mass-Training." },
+  fm: { name: "Mammo-FM", p: "probe_small", shape: "fm_shape", margin: "fm_margin", size: "fm_size_mm", malig: "fm_malig",
+        maligNote: "malignancy probe", note: "Probes on frozen Mammo-FM embeddings, fitted on CBIS Mass-Training: mass present on 5 + 10 mm boxes, the rest on 20 + 40 mm boxes." },
+};
+
+function trueLabel(it, c) {
+  if (!it.lesions.length) return '<p>No mass annotated (normal breast): every box here is a false alarm.</p>';
+  const L = it.lesions[0];
+  const desc = [L.shape && nice(L.shape), L.margins && `${nice(L.margins)} margins`, L.pathology && nice(L.pathology),
+    L.label && L.label !== "mass" && L.label].filter(Boolean).join(", ");
+  return `<p>Annotated mass: ${L.r_mm} mm radius${desc ? ", " + desc : ""}.</p>` +
+    `<p class="${c.hit ? "hit" : "miss"}">This box ${c.hit ? "hits the mass (its peak is within 4 mm)" : "misses the mass"}.</p>`;
+}
+
 function detail(s, it, R) {
   const D = $("detail"), c = focus(R, s);
   if (!c) { D.innerHTML = '<p class="muted">No places.</p>'; return; }
-  const o = R.find((x) => x.c === c), b = o.box;
-  const nat = ranked(it, native(s.src), s.src).find((x) => x.c === c).rank;
-  const row = (k, v) => `<tr><th>${k}</th><td>${v}</td></tr>`;
+  const o = R.find((x) => x.c === c), M = READER[s.src], b = o.box;
   D.innerHTML = `<h3>Rank ${o.rank} · ${s.src === "fm" ? "Mammo-FM peak" : "A1 candidate"}</h3>` +
-    `<table class="kv">` +
-    row(META.scorers[s.score], shownValue(s.score, o.s)) +
-    row(s.src === "fm" ? "peak rank (own map)" : "A1 rank", nat) +
-    (it.lesions.length ? row("hits the mass", c.hit ? "yes (peak within 4 mm)" : "no") : "") +
-    row("box", `${Math.round((b[2] - b[0]) * it.px_mm)} × ${Math.round((b[3] - b[1]) * it.px_mm)} mm`) +
-    row("A1 z" + (s.src === "fm" ? " (cell at peak)" : ""), c.z.toFixed(2)) +
-    row("concept p(mass)", fmtP(sigmoid(c.pc))) +
-    row("Mammo-FM p(mass), 5 + 10 mm", fmtP(sigmoid(c.probe_small))) +
-    row("Mammo-FM p(mass), 20 + 40 mm", fmtP(sigmoid(c.probe_mammofm))) +
-    `</table>` +
-    `<h4>Concept model</h4><p>size ≈ ${c.size_mm} mm radius · malignancy (from concepts) ${c.malig.toFixed(2)}</p>` +
-    `<h4>Shape</h4>${bars(META.shapes, c.shape)}<h4>Margin</h4>${bars(META.margins, c.margin)}` +
-    `<p class="muted">Probabilities are raw model outputs at their training base rates, not calibrated. ` +
-    `Concepts are read as if a mass were there; they mean little when concept p(mass) is low.</p>`;
+    `<h4>True label</h4>${trueLabel(it, c)}` +
+    `<h4>${M.name} reading</h4>` +
+    `<p>mass probability <b>${fmtP(sigmoid(c[M.p]))}</b> · size ≈ ${c[M.size]} mm radius · malignancy ${c[M.malig].toFixed(2)} ` +
+    `<span class="muted">(${M.maligNote})</span> · box ${Math.round((b[2] - b[0]) * it.px_mm)} × ${Math.round((b[3] - b[1]) * it.px_mm)} mm</p>` +
+    `<h4>Shape</h4>${bars(META.shapes, c[M.shape])}<h4>Margin</h4>${bars(META.margins, c[M.margin])}` +
+    `<p class="muted">${M.note} Probabilities are raw model outputs at their training base rates, not calibrated. ` +
+    `Shape, margin, size and malignancy are read as if a mass were there; they mean little when the mass probability is low.</p>`;
 }
 
 // where the heatmap's hottest spot is relative to the boxes' source
@@ -326,7 +331,8 @@ function hint(s, it, heat) {
   const d = Math.min(...pts(it, s.src).map((c) => Math.hypot(c.y - y, c.x - x))) * it.px_mm;
   const what = s.map === "a1" ? "A1" : "Mammo-FM";
   H.textContent = `Boxes are ${s.src === "fm" ? "Mammo-FM's peaks" : "A1's candidates"}, heatmap is ${what}: ` +
-    (d > 10 ? `${what}'s hottest spot is ${Math.round(d)} mm from the nearest box, so no box can land there.` : `${what}'s hottest spot is within ${Math.max(1, Math.round(d))} mm of a box.`);
+    `${what}'s hottest spot is ${Math.round(d)} mm from the nearest box, so no box can land there.`;
+  if (d <= 10) H.textContent = "";
 }
 
 // ---------------------------------------------------------------- browser
@@ -363,6 +369,12 @@ function setsNote() {
   $("sets-note").after(T);
 }
 
+function syncSource(map = true, score = true) {
+  const fm = $("c-src").value === "fm";
+  if (map) $("c-map").value = fm ? ($("c-map").value.startsWith("fm") ? $("c-map").value : "fm_inbreast") : "a1";
+  if (score) $("c-score").value = fm ? "probe_small" : "z";
+}
+
 async function init() {
   const j = await (await fetch("data/items.json")).json();
   DATA = j.items; META = j.meta;
@@ -375,16 +387,15 @@ async function init() {
   $("c-score").value = "A1+CBM+probe_mammofm";
   fillSelect($("c-cmap"), Object.keys(META.cmaps).map((c) => [c, c]));
   for (const id of ["f-set", "f-lesion", "f-case"]) $(id).onchange = grid;
-  $("c-src").addEventListener("change", () => {
-    const fm = $("c-src").value === "fm";
-    if (fm && $("c-map").value === "a1") $("c-map").value = "fm_inbreast";
-    if (fm) $("c-score").value = "probe_small";
+  $("c-src").addEventListener("change", () => {               // one model per box source: map and ranking follow it
+    syncSource();
     sel = null;
     $("c-map").dispatchEvent(new Event("change"));
   });
   $("c-map").addEventListener("change", () => {
     const a1 = $("c-map").value === "a1";
     if (a1) $("c-scale").value = "rel";
+    else if ($("c-scale").value === "rel") $("c-scale").value = "log";
     $("c-view").disabled = a1;
   });
   for (const el of document.querySelectorAll(".controls select, .controls input")) el.addEventListener("input", () => {
@@ -394,7 +405,8 @@ async function init() {
   for (const [k, id] of [["src", "c-src"], ["map", "c-map"], ["view", "c-view"], ["score", "c-score"], ["k", "c-k"], ["cmap", "c-cmap"],
                          ["alpha", "c-alpha"], ["scale", "c-scale"], ["floor", "c-floor"], ["heat", "c-heat"]]) if (q.has(k)) $(id).value = q.get(k);
   $("o-k").textContent = $("c-k").value; $("o-alpha").textContent = (+$("c-alpha").value).toFixed(2);
-  if ($("c-src").value === "fm" && !q.has("score")) $("c-score").value = "probe_small";
+  if (!q.has("map") || !q.has("score")) syncSource(!q.has("map"), !q.has("score"));
+  if ($("c-map").value === "a1") $("c-scale").value = q.get("scale") || "rel";
   $("c-view").disabled = $("c-map").value === "a1";
   setsNote();
   cur = DATA.find((x) => x.id === q.get("id")) || null;

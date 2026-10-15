@@ -11,9 +11,6 @@ table.auroc td, table.auroc th { padding: 2px 6px; }
 .main-col { min-width: 0; }
 #canvas { cursor: pointer; }
 #detail { font-size: 13px; position: sticky; top: 8px; border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; background: var(--panel); }
-table.kv { width: 100%; font-size: 12px; margin-bottom: 6px; }
-table.kv th { text-align: left; font-weight: 400; color: var(--muted); padding: 2px 6px 2px 0; }
-table.kv td { text-align: right; padding: 2px 0; }
 #detail h3 { font-size: 14px; margin: 0 0 6px; }
 #detail h4 { font-size: 12px; margin: 10px 0 4px; color: var(--muted); font-weight: 600; }
 #detail p { margin: 4px 0; }
@@ -40,3 +37,6 @@ code { font-size: 12px; }
 #say .hit { color: #1f9d45; font-weight: 600; }
 #say .miss { color: #d93025; font-weight: 600; }
 .small { font-size: 12px; }
+#detail .hit { color: #1f9d45; font-weight: 600; }
+#detail .miss { color: #d93025; font-weight: 600; }
+#detail p { margin: 4px 0; }
