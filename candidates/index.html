@@ -34,8 +34,10 @@
       <fieldset>
         <legend>Heatmap</legend>
         <label>Map <select id="c-map">
-          <option value="fm_inbreast">Mammo-FM · INbreast calibrator</option>
-          <option value="fm_vindr">Mammo-FM · VinDr calibrator</option>
+          <option value="fm_inbreast">Mammo-FM 5+10 mm · INbreast calibrator</option>
+          <option value="fm_vindr">Mammo-FM 5+10 mm · VinDr calibrator</option>
+          <option value="fm2040_inbreast">Mammo-FM 20+40 mm · INbreast calibrator</option>
+          <option value="fm2040_vindr">Mammo-FM 20+40 mm · VinDr calibrator</option>
           <option value="a1">A1 · raw score (uncalibrated)</option>
           <option value="none">none</option>
         </select></label>
@@ -79,11 +81,14 @@
           A candidate <b>hits</b> when its centre is within 4 mm of the annotated mass.</li>
         <li><b>Concept model</b>: a ResNet-50 on a 40 mm crop around each candidate, trained on CBIS Mass-Training. It gives
           mass present, shape, margin and size. Malignancy comes from a logistic head on those predicted concepts.</li>
-        <li><b>Mammo-FM probe</b>: a logistic probe (mass present) on frozen Mammo-FM embeddings pooled over 20 and 40 mm boxes,
-          fitted on CBIS Mass-Training. The same probe, applied at every cell of Mammo-FM's feature map, gives the <b>Mammo-FM heatmap</b>.</li>
+        <li><b>Mammo-FM probe</b>: a logistic probe (mass present) on frozen Mammo-FM embeddings pooled over square boxes around a point,
+          fitted on CBIS Mass-Training. The same probe, applied at every cell of Mammo-FM's feature map, gives the <b>Mammo-FM heatmap</b>.
+          Two versions: <b>5 + 10 mm</b> boxes (default, a sharper map) and the original <b>20 + 40 mm</b> boxes (smoother: each score averages a 20–40 mm area).
+          Mammo-FM's feature grid is fixed at 29 × 48 cells per breast (about 2–8 mm per cell), so even the small-box map cannot be finer than that.
+          The fusions use the 20 + 40 mm probe, which their weights were fitted with.</li>
         <li><b>Boxes vs heatmap</b>: re-ranking only reorders the places the box source proposed. With A1's candidates on the Mammo-FM map,
           the boxes sit where A1 peaked, which is often not where Mammo-FM is hot: in this sample Mammo-FM's hottest spot is more than 10 mm from every A1 candidate in about 44 % of images.
-          By default the boxes are Mammo-FM's own map peaks (same 10 mm separation rule), so boxes and heatmap agree; switch <i>Boxes</i> to A1's candidates to see A1 re-ranked. The concept model reads those peaks too,
+          By default the boxes are the peaks of the 5 + 10 mm Mammo-FM map (same 10 mm separation rule), so boxes and heatmap agree; switch <i>Boxes</i> to A1's candidates to see A1 re-ranked. The concept model reads those peaks too,
           and A1's score there is its cell value. The fusion weights were chosen on A1's candidates, so applying them to Mammo-FM peaks is an extrapolation.</li>
         <li><b>Fusions</b> add standardised scores, <code>z/sd + a·other/sd</code>. The weights were chosen on CBIS validation patients and then fixed.
           CBIS Mass-Test is in-site for everything fitted on CBIS. TOMPEI and DMID are external.</li>

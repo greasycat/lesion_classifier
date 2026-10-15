@@ -37,7 +37,7 @@ function score(c, name) {
 }
 
 const pts = (it, src) => (src === "fm" ? it.fm_cands : it.cands);
-const native = (src) => (src === "fm" ? "probe_mammofm" : "z");
+const native = (src) => (src === "fm" ? "probe_small" : "z");
 
 function ranked(it, name, src = "a1") {
   return pts(it, src).map((c) => ({ c, s: score(c, name) })).sort((a, b) => b.s - a.s).map((o, i) => ({ ...o, rank: i + 1 }));
@@ -64,7 +64,7 @@ function calibrated(it, mapKey, view, mask) {
   if (qCache.has(key)) return qCache.get(key);
   const isA1 = mapKey === "a1";
   const cal = isA1 ? null : META.calibrators[mapKey][view];      // A1: raw sigmoid(z), the M-SYNTH calibrator flattens real images
-  const grid = isA1 ? it.a1 : it.fm;
+  const grid = isA1 ? it.a1 : mapKey.startsWith("fm2040") ? it.fm2040 : it.fm;
   const Z = grid.z, gh = Z.length, gw = Z[0].length;
   const [cy, cx] = isA1 ? [grid.cell_mm, grid.cell_mm] : grid.cell_mm;
   const P = Z.map((row) => row.map((z) => sigmoid(z + (cal ? cal.shift : 0))));
@@ -210,9 +210,9 @@ function table(s, it, R) {
   const rows = R.slice(0, Math.max(s.k, 1));
   const a1r = new Map(ranked(it, native(s.src), s.src).map((o) => [o.c, o.rank]));
   T.innerHTML = `<tr><th>rank</th><th>${s.src === "fm" ? "peak rank" : "A1 rank"}</th><th>${META.scorers[s.score]}</th><th>A1 z${s.src === "fm" ? " (cell)" : ""}</th><th>concept p(mass)</th>` +
-    `<th>Mammo-FM p(mass)</th>${it.lesions.length ? "<th>hit</th>" : ""}</tr>` +
+    `<th>Mammo-FM p(mass) 5+10</th><th>20+40</th>${it.lesions.length ? "<th>hit</th>" : ""}</tr>` +
     rows.map(({ c, s: v, rank }) => `<tr data-k="${c.k}" class="${c === sel ? "on" : ""}"><td>${rank}</td><td>${a1r.get(c)}</td>` +
-      `<td>${v.toFixed(2)}</td><td>${c.z.toFixed(2)}</td><td>${fmtP(sigmoid(c.pc))}</td><td>${fmtP(sigmoid(c.probe_mammofm))}</td>` +
+      `<td>${v.toFixed(2)}</td><td>${c.z.toFixed(2)}</td><td>${fmtP(sigmoid(c.pc))}</td><td>${fmtP(sigmoid(c.probe_small))}</td><td>${fmtP(sigmoid(c.probe_mammofm))}</td>` +
       (it.lesions.length ? `<td>${c.hit ? "✓" : ""}</td>` : "") + "</tr>").join("");
   for (const tr of T.querySelectorAll("tr[data-k]")) tr.onclick = () => { const c = pts(it, s.src)[+tr.dataset.k - 1]; sel = sel === c ? null : c; draw(); };
 }
@@ -292,7 +292,7 @@ async function init() {
   $("c-src").addEventListener("change", () => {
     const fm = $("c-src").value === "fm";
     if (fm && $("c-map").value === "a1") $("c-map").value = "fm_inbreast";
-    if (fm) $("c-score").value = "probe_mammofm";
+    if (fm) $("c-score").value = "probe_small";
     sel = null;
     $("c-map").dispatchEvent(new Event("change"));
   });
@@ -308,7 +308,7 @@ async function init() {
   for (const [k, id] of [["src", "c-src"], ["map", "c-map"], ["view", "c-view"], ["score", "c-score"], ["k", "c-k"], ["cmap", "c-cmap"],
                          ["alpha", "c-alpha"], ["scale", "c-scale"], ["floor", "c-floor"], ["heat", "c-heat"]]) if (q.has(k)) $(id).value = q.get(k);
   $("o-k").textContent = $("c-k").value; $("o-alpha").textContent = (+$("c-alpha").value).toFixed(2);
-  if ($("c-src").value === "fm" && !q.has("score")) $("c-score").value = "probe_mammofm";
+  if ($("c-src").value === "fm" && !q.has("score")) $("c-score").value = "probe_small";
   $("c-view").disabled = $("c-map").value === "a1";
   setsNote();
   cur = DATA.find((x) => x.id === q.get("id")) || null;
