@@ -308,7 +308,7 @@ async function init() {
   for (const [k, id] of [["src", "c-src"], ["map", "c-map"], ["view", "c-view"], ["score", "c-score"], ["k", "c-k"], ["cmap", "c-cmap"],
                          ["alpha", "c-alpha"], ["scale", "c-scale"], ["floor", "c-floor"], ["heat", "c-heat"]]) if (q.has(k)) $(id).value = q.get(k);
   $("o-k").textContent = $("c-k").value; $("o-alpha").textContent = (+$("c-alpha").value).toFixed(2);
-  if (q.get("src") === "fm" && !q.has("score")) $("c-score").value = "probe_mammofm";
+  if ($("c-src").value === "fm" && !q.has("score")) $("c-score").value = "probe_mammofm";
   $("c-view").disabled = $("c-map").value === "a1";
   setsNote();
   cur = DATA.find((x) => x.id === q.get("id")) || null;
