@@ -217,7 +217,7 @@ async function draw() {
   g.font = `bold ${fs}px system-ui`;
   for (const { c, rank, box: [r0, c0, r1, c1] } of shown) {
     const hitCol = !it.lesions.length || !s.outline ? "#ff3b30" : c.hit ? "#34c759" : "#ff3b30";
-    g.strokeStyle = g.fillStyle = hitCol; g.lineWidth = c === sel ? lw * 2.5 : lw;
+    g.strokeStyle = g.fillStyle = hitCol; g.lineWidth = c === focus(R, s) ? lw * 2.5 : lw;
     g.strokeRect(c0, r0, c1 - c0, r1 - r0);
     g.beginPath(); g.arc(c.x, c.y, lw * 1.5, 0, 2 * Math.PI); g.fill();
     if (s.ranks) g.fillText(String(rank), c1 + 3, r0 + fs);
@@ -226,7 +226,12 @@ async function draw() {
   info(s, it, R, heat, mask);
   hint(s, it, heat);
   table(s, it, R);
-  detail(it);
+  detail(s, it, R);
+  cv.onclick = (e) => {                                  // click a box to select it
+    const rc = cv.getBoundingClientRect(), x = ((e.clientX - rc.left) * W) / rc.width, y = ((e.clientY - rc.top) * H) / rc.height;
+    const hit = shown.filter(({ box: b }) => y >= b[0] && y < b[2] && x >= b[1] && x < b[3]);
+    if (hit.length) { sel = hit[0].c; draw(); }
+  };
 }
 
 function drawBar(s, heat) {
@@ -262,31 +267,52 @@ function info(s, it, R, heat, mask) {
   $("info").textContent = t;
 }
 
+// the chosen ranking's value as a probability where it is one (a model logit), else the fused score
+const PROB_SCORERS = new Set(["z", "pc", "probe_small", "probe_mammofm"]);
+const shownValue = (score, v) => (PROB_SCORERS.has(score) ? fmtP(sigmoid(v)) : v.toFixed(2));
+
 function table(s, it, R) {
   const T = $("places");
   const rows = R.slice(0, Math.max(s.k, 1));
-  const a1r = new Map(ranked(it, native(s.src), s.src).map((o) => [o.c, o.rank]));
-  T.innerHTML = `<tr><th>rank</th><th>${s.src === "fm" ? "peak rank" : "A1 rank"}</th><th>${META.scorers[s.score]}</th><th>A1 z${s.src === "fm" ? " (cell)" : ""}</th><th>concept p(mass)</th>` +
-    `<th>Mammo-FM p(mass) 5+10</th><th>20+40</th><th>box (mm)</th>${it.lesions.length ? "<th>hit</th>" : ""}</tr>` +
-    rows.map(({ c, s: v, rank, box }) => `<tr data-k="${c.k}" class="${c === sel ? "on" : ""}"><td>${rank}</td><td>${a1r.get(c)}</td>` +
-      `<td>${v.toFixed(2)}</td><td>${c.z.toFixed(2)}</td><td>${fmtP(sigmoid(c.pc))}</td><td>${fmtP(sigmoid(c.probe_small))}</td><td>${fmtP(sigmoid(c.probe_mammofm))}</td>` +
-      `<td>${Math.round((box[2] - box[0]) * it.px_mm)} × ${Math.round((box[3] - box[1]) * it.px_mm)}</td>` +
-      (it.lesions.length ? `<td>${c.hit ? "✓" : ""}</td>` : "") + "</tr>").join("");
-  for (const tr of T.querySelectorAll("tr[data-k]")) tr.onclick = () => { const c = pts(it, s.src)[+tr.dataset.k - 1]; sel = sel === c ? null : c; draw(); };
+  const isP = PROB_SCORERS.has(s.score);
+  const cls = (c) => (it.lesions.length && s.outline ? (c.hit ? "hit" : "miss") : "");
+  T.innerHTML = `<tr><th>rank</th>${rows.map(({ c, rank }) => `<td data-k="${c.k}" class="${cls(c)}${c === focus(R, s) ? " on" : ""}"><b>${rank}</b></td>`).join("")}</tr>` +
+    `<tr><th title="${META.scorers[s.score]}">${isP ? "p(mass)" : "score"}</th>${rows.map(({ c, s: v }) =>
+      `<td data-k="${c.k}" class="${c === focus(R, s) ? "on" : ""}">${shownValue(s.score, v)}</td>`).join("")}</tr>`;
+  for (const td of T.querySelectorAll("td[data-k]")) td.onclick = () => { sel = pts(it, s.src)[+td.dataset.k - 1]; draw(); };
+}
+
+// the selected place if it is shown, else rank 1
+function focus(R, s) {
+  const shown = R.slice(0, Math.max(s.k, 1));
+  return shown.find((o) => o.c === sel)?.c || shown[0]?.c || null;
 }
 
 function bars(names, vals) {
   return names.map((n, i) => `<div class="bar-row"><span>${nice(n)}</span><i style="width:${Math.round(vals[i] * 100)}%"></i><b>${vals[i].toFixed(2)}</b></div>`).join("");
 }
 
-function detail(it) {
-  const D = $("detail");
-  if (!sel) { D.innerHTML = '<p class="muted">Click a row for the concept model\'s reading of that region.</p>'; return; }
-  const c = sel;
-  D.innerHTML = `<h3>${it.fm_cands.includes(c) ? "Mammo-FM peak" : "A1 candidate"} ${c.k}</h3>` +
-    `<p>Concept model: mass present ${fmtP(sigmoid(c.pc))}, size ≈ ${c.size_mm} mm radius, malignancy (from concepts) ${c.malig.toFixed(2)}</p>` +
+function detail(s, it, R) {
+  const D = $("detail"), c = focus(R, s);
+  if (!c) { D.innerHTML = '<p class="muted">No places.</p>'; return; }
+  const o = R.find((x) => x.c === c), b = o.box;
+  const nat = ranked(it, native(s.src), s.src).find((x) => x.c === c).rank;
+  const row = (k, v) => `<tr><th>${k}</th><td>${v}</td></tr>`;
+  D.innerHTML = `<h3>Rank ${o.rank} · ${s.src === "fm" ? "Mammo-FM peak" : "A1 candidate"}</h3>` +
+    `<table class="kv">` +
+    row(META.scorers[s.score], shownValue(s.score, o.s)) +
+    row(s.src === "fm" ? "peak rank (own map)" : "A1 rank", nat) +
+    (it.lesions.length ? row("hits the mass", c.hit ? "yes (peak within 4 mm)" : "no") : "") +
+    row("box", `${Math.round((b[2] - b[0]) * it.px_mm)} × ${Math.round((b[3] - b[1]) * it.px_mm)} mm`) +
+    row("A1 z" + (s.src === "fm" ? " (cell at peak)" : ""), c.z.toFixed(2)) +
+    row("concept p(mass)", fmtP(sigmoid(c.pc))) +
+    row("Mammo-FM p(mass), 5 + 10 mm", fmtP(sigmoid(c.probe_small))) +
+    row("Mammo-FM p(mass), 20 + 40 mm", fmtP(sigmoid(c.probe_mammofm))) +
+    `</table>` +
+    `<h4>Concept model</h4><p>size ≈ ${c.size_mm} mm radius · malignancy (from concepts) ${c.malig.toFixed(2)}</p>` +
     `<h4>Shape</h4>${bars(META.shapes, c.shape)}<h4>Margin</h4>${bars(META.margins, c.margin)}` +
-    `<p class="muted">Concepts are read as if a mass were there. They mean little when mass present is low.</p>`;
+    `<p class="muted">Probabilities are raw model outputs at their training base rates, not calibrated. ` +
+    `Concepts are read as if a mass were there; they mean little when concept p(mass) is low.</p>`;
 }
 
 // where the heatmap's hottest spot is relative to the boxes' source

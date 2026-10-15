@@ -62,17 +62,19 @@
       </fieldset>
     </div>
     <p id="hint" class="hint"></p>
-    <div class="stage">
-      <canvas id="canvas"></canvas>
-      <div class="side">
-        <canvas id="bar" width="28" height="260"></canvas>
-        <div id="bar-labels"></div>
+    <div class="layout">
+      <div class="main-col">
+        <div class="strip-wrap"><table id="places"></table></div>
+        <div class="stage">
+          <canvas id="canvas"></canvas>
+          <div class="side">
+            <canvas id="bar" width="28" height="260"></canvas>
+            <div id="bar-labels"></div>
+          </div>
+        </div>
+        <div id="info"></div>
       </div>
-    </div>
-    <div id="info"></div>
-    <div class="tables">
-      <table id="places"></table>
-      <div id="detail"></div>
+      <aside id="detail"></aside>
     </div>
     <details class="about">
       <summary>What am I looking at?</summary>
