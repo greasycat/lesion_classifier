@@ -36,8 +36,11 @@ function score(c, name) {
   return s;
 }
 
-function ranked(it, name) {
-  return it.cands.map((c) => ({ c, s: score(c, name) })).sort((a, b) => b.s - a.s).map((o, i) => ({ ...o, rank: i + 1 }));
+const pts = (it, src) => (src === "fm" ? it.fm_cands : it.cands);
+const native = (src) => (src === "fm" ? "probe_mammofm" : "z");
+
+function ranked(it, name, src = "a1") {
+  return pts(it, src).map((c) => ({ c, s: score(c, name) })).sort((a, b) => b.s - a.s).map((o, i) => ({ ...o, rank: i + 1 }));
 }
 
 function caseOf(it) {
@@ -90,7 +93,7 @@ function calibrated(it, mapKey, view, mask) {
 
 function settings() {
   return {
-    map: $("c-map").value, view: $("c-view").value, heat: $("c-heat").value, score: $("c-score").value, k: +$("c-k").value,
+    map: $("c-map").value, view: $("c-view").value, heat: $("c-heat").value, src: $("c-src").value, score: $("c-score").value, k: +$("c-k").value,
     ghost: $("c-ghost").checked, ranks: $("c-ranks").checked, cmap: $("c-cmap").value, alpha: +$("c-alpha").value,
     scale: $("c-scale").value, floor: +$("c-floor").value, outline: $("c-outline").checked,
   };
@@ -119,7 +122,7 @@ async function draw() {
   const W = it.w, H = it.h, cv = $("canvas");
   cv.width = W; cv.height = H;
   const g = cv.getContext("2d"), out = g.createImageData(W, H), o = out.data;
-  const R = ranked(it, s.score), shown = R.slice(0, s.k);
+  const R = ranked(it, s.score, s.src), shown = R.slice(0, s.k);
   const heat = s.map !== "none" ? calibrated(it, s.map, s.view, mask) : null;
   const norm = heat ? normFn(s, heat.max) : null, lut = META.cmaps[s.cmap];
   const [lo] = heat ? normRange(s, heat.max) : [0];
@@ -150,7 +153,7 @@ async function draw() {
     for (const poly of it.outline) { g.beginPath(); poly.forEach(([r, c], k) => (k ? g.lineTo(c, r) : g.moveTo(c, r))); g.closePath(); g.stroke(); }
   }
   const b = boxPx(it);
-  if (s.ghost && s.score !== "z") {
+  if (s.ghost && (s.score !== "z" || s.src !== "a1")) {
     g.setLineDash([5, 4]); g.strokeStyle = "rgba(255,255,255,.75)"; g.lineWidth = lw;
     for (const { c } of ranked(it, "z").slice(0, s.k)) g.strokeRect(c.x - b / 2, c.y - b / 2, b, b);
     g.setLineDash([]);
@@ -164,8 +167,9 @@ async function draw() {
   }
   drawBar(s, heat);
   info(s, it, R, heat);
+  hint(s, it, heat);
   table(s, it, R);
-  detail();
+  detail(it);
 }
 
 function drawBar(s, heat) {
@@ -194,7 +198,7 @@ function info(s, it, R, heat) {
     t += ` · mass ${L.r_mm} mm radius` + (L.shape ? `, ${nice(L.shape)}` : "") + (L.margins ? `, ${nice(L.margins)}` : "") +
       (L.pathology ? `, ${nice(L.pathology)}` : "") + (L.label && L.label !== "mass" ? ` (${L.label})` : "");
     const first = R.find((o) => o.c.hit), a1 = ranked(it, "z").find((o) => o.c.hit);
-    t += ` · first hit: rank ${first ? first.rank : "none in top 20"}` + (s.score !== "z" ? ` (A1 alone: ${a1 ? a1.rank : "none"})` : "");
+    t += ` · first hit: rank ${first ? first.rank : "none in top 20"}` + (s.score !== "z" || s.src !== "a1" ? ` (A1 alone: ${a1 ? a1.rank : "none"})` : "");
   } else t += " · normal breast";
   if (heat) t += s.map === "a1" ? ` · A1 map max sigmoid(z) ${fmtP(heat.max)} (uncalibrated)` :
     ` · map max ${fmtP(heat.max)} at ${Math.round(META.views[s.view] * 100)} % prevalence`;
@@ -204,27 +208,40 @@ function info(s, it, R, heat) {
 function table(s, it, R) {
   const T = $("places");
   const rows = R.slice(0, Math.max(s.k, 1));
-  const a1r = new Map(ranked(it, "z").map((o) => [o.c, o.rank]));
-  T.innerHTML = `<tr><th>rank</th><th>A1 rank</th><th>${META.scorers[s.score]}</th><th>A1 z</th><th>concept p(mass)</th>` +
+  const a1r = new Map(ranked(it, native(s.src), s.src).map((o) => [o.c, o.rank]));
+  T.innerHTML = `<tr><th>rank</th><th>${s.src === "fm" ? "peak rank" : "A1 rank"}</th><th>${META.scorers[s.score]}</th><th>A1 z${s.src === "fm" ? " (cell)" : ""}</th><th>concept p(mass)</th>` +
     `<th>Mammo-FM p(mass)</th>${it.lesions.length ? "<th>hit</th>" : ""}</tr>` +
     rows.map(({ c, s: v, rank }) => `<tr data-k="${c.k}" class="${c === sel ? "on" : ""}"><td>${rank}</td><td>${a1r.get(c)}</td>` +
       `<td>${v.toFixed(2)}</td><td>${c.z.toFixed(2)}</td><td>${fmtP(sigmoid(c.pc))}</td><td>${fmtP(sigmoid(c.probe_mammofm))}</td>` +
       (it.lesions.length ? `<td>${c.hit ? "✓" : ""}</td>` : "") + "</tr>").join("");
-  for (const tr of T.querySelectorAll("tr[data-k]")) tr.onclick = () => { const c = it.cands[+tr.dataset.k - 1]; sel = sel === c ? null : c; draw(); };
+  for (const tr of T.querySelectorAll("tr[data-k]")) tr.onclick = () => { const c = pts(it, s.src)[+tr.dataset.k - 1]; sel = sel === c ? null : c; draw(); };
 }
 
 function bars(names, vals) {
   return names.map((n, i) => `<div class="bar-row"><span>${nice(n)}</span><i style="width:${Math.round(vals[i] * 100)}%"></i><b>${vals[i].toFixed(2)}</b></div>`).join("");
 }
 
-function detail() {
+function detail(it) {
   const D = $("detail");
   if (!sel) { D.innerHTML = '<p class="muted">Click a row for the concept model\'s reading of that region.</p>'; return; }
   const c = sel;
-  D.innerHTML = `<h3>Candidate ${c.k} (A1 order)</h3>` +
+  D.innerHTML = `<h3>${it.fm_cands.includes(c) ? "Mammo-FM peak" : "A1 candidate"} ${c.k}</h3>` +
     `<p>Concept model: mass present ${fmtP(sigmoid(c.pc))}, size ≈ ${c.size_mm} mm radius, malignancy (from concepts) ${c.malig.toFixed(2)}</p>` +
     `<h4>Shape</h4>${bars(META.shapes, c.shape)}<h4>Margin</h4>${bars(META.margins, c.margin)}` +
     `<p class="muted">Concepts are read as if a mass were there. They mean little when mass present is low.</p>`;
+}
+
+// where the heatmap's hottest spot is relative to the boxes' source
+function hint(s, it, heat) {
+  const H = $("hint");
+  if (!heat || (s.map === "a1" ? s.src === "a1" : s.src === "fm")) { H.textContent = ""; return; }
+  let mi = 0;
+  for (let i = 0; i < heat.q.length; i++) if (heat.q[i] > (heat.q[mi] || 0)) mi = i;
+  const y = Math.floor(mi / it.w), x = mi % it.w;
+  const d = Math.min(...pts(it, s.src).map((c) => Math.hypot(c.y - y, c.x - x))) * it.px_mm;
+  const what = s.map === "a1" ? "A1" : "Mammo-FM";
+  H.textContent = `Boxes are ${s.src === "fm" ? "Mammo-FM's peaks" : "A1's candidates"}, heatmap is ${what}: ` +
+    (d > 10 ? `${what}'s hottest spot is ${Math.round(d)} mm from the nearest box, so no box can land there.` : `${what}'s hottest spot is within ${Math.max(1, Math.round(d))} mm of a box.`);
 }
 
 // ---------------------------------------------------------------- browser
@@ -272,6 +289,13 @@ async function init() {
   $("c-score").value = "A1+CBM+probe_mammofm";
   fillSelect($("c-cmap"), Object.keys(META.cmaps).map((c) => [c, c]));
   for (const id of ["f-set", "f-lesion", "f-case"]) $(id).onchange = grid;
+  $("c-src").addEventListener("change", () => {
+    const fm = $("c-src").value === "fm";
+    if (fm && $("c-map").value === "a1") $("c-map").value = "fm_inbreast";
+    if (fm) $("c-score").value = "probe_mammofm";
+    sel = null;
+    $("c-map").dispatchEvent(new Event("change"));
+  });
   $("c-map").addEventListener("change", () => {
     const a1 = $("c-map").value === "a1";
     if (a1) $("c-scale").value = "rel";
@@ -280,10 +304,11 @@ async function init() {
   for (const el of document.querySelectorAll(".controls select, .controls input")) el.addEventListener("input", () => {
     $("o-k").textContent = $("c-k").value; $("o-alpha").textContent = (+$("c-alpha").value).toFixed(2); draw();
   });
-  const q = new URLSearchParams(location.search);   // e.g. ?id=tompei_00262&map=fm_inbreast&view=p10&score=z&k=5&sel=2
-  for (const [k, id] of [["map", "c-map"], ["view", "c-view"], ["score", "c-score"], ["k", "c-k"], ["cmap", "c-cmap"],
+  const q = new URLSearchParams(location.search);   // e.g. ?id=tompei_00262&src=a1&map=fm_inbreast&view=p10&score=z&k=5&sel=2
+  for (const [k, id] of [["src", "c-src"], ["map", "c-map"], ["view", "c-view"], ["score", "c-score"], ["k", "c-k"], ["cmap", "c-cmap"],
                          ["alpha", "c-alpha"], ["scale", "c-scale"], ["floor", "c-floor"], ["heat", "c-heat"]]) if (q.has(k)) $(id).value = q.get(k);
   $("o-k").textContent = $("c-k").value; $("o-alpha").textContent = (+$("c-alpha").value).toFixed(2);
+  if (q.get("src") === "fm" && !q.has("score")) $("c-score").value = "probe_mammofm";
   $("c-view").disabled = $("c-map").value === "a1";
   setsNote();
   cur = DATA.find((x) => x.id === q.get("id")) || null;

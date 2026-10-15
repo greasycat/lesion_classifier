@@ -44,6 +44,7 @@
       </fieldset>
       <fieldset>
         <legend>Candidates</legend>
+        <label>Boxes <select id="c-src"><option value="a1">A1's top-20 candidates</option><option value="fm">Mammo-FM's top-20 map peaks</option></select></label>
         <label>Rank by <select id="c-score"></select></label>
         <label>k <input id="c-k" type="range" min="0" max="20" value="5"><output id="o-k">5</output></label>
         <label class="check"><input id="c-ghost" type="checkbox"> A1's top-k (dashed)</label>
@@ -58,6 +59,7 @@
         <label class="check"><input id="c-outline" type="checkbox" checked> mass outline</label>
       </fieldset>
     </div>
+    <p id="hint" class="hint"></p>
     <div class="stage">
       <canvas id="canvas"></canvas>
       <div class="side">
@@ -79,6 +81,10 @@
           mass present, shape, margin and size. Malignancy comes from a logistic head on those predicted concepts.</li>
         <li><b>Mammo-FM probe</b>: a logistic probe (mass present) on frozen Mammo-FM embeddings pooled over 20 and 40 mm boxes,
           fitted on CBIS Mass-Training. The same probe, applied at every cell of Mammo-FM's feature map, gives the <b>Mammo-FM heatmap</b>.</li>
+        <li><b>Boxes vs heatmap</b>: re-ranking only reorders the places the box source proposed. With A1's candidates on the Mammo-FM map,
+          the boxes sit where A1 peaked, which is often not where Mammo-FM is hot: in this sample Mammo-FM's hottest spot is more than 10 mm from every A1 candidate in about 44 % of images.
+          Switch <i>Boxes</i> to Mammo-FM's map peaks (same 10 mm separation rule) to see Mammo-FM as a detector in its own right. The concept model reads those peaks too,
+          and A1's score there is its cell value. The fusion weights were chosen on A1's candidates, so applying them to Mammo-FM peaks is an extrapolation.</li>
         <li><b>Fusions</b> add standardised scores, <code>z/sd + a·other/sd</code>. The weights were chosen on CBIS validation patients and then fixed.
           CBIS Mass-Test is in-site for everything fitted on CBIS. TOMPEI and DMID are external.</li>
         <li><b>Calibration</b> gives the pixel lesion probability at a declared image prevalence.
