@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Second-Opinion Viewer</title>
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="candidates.css">
+</head>
+<body>
+<header>
+  <h1>A1 candidates with second opinions</h1>
+  <span id="count" class="muted"></span>
+  <nav><a href="../viewer/index.html">M-SYNTH viewer</a> · <a href="../">Guide</a></nav>
+</header>
+<main>
+  <aside id="browser">
+    <div class="filters">
+      <label>Set <select id="f-set"><option value="">any</option></select></label>
+      <label>Mass <select id="f-lesion"><option value="">any</option><option value="1">present</option><option value="0">normal</option></select></label>
+      <label class="wide">Case <select id="f-case">
+        <option value="">any</option>
+        <option value="11">both top-1 hit</option>
+        <option value="01">fusion rescues A1</option>
+        <option value="10">fusion loses A1's hit</option>
+        <option value="00">both top-1 miss</option>
+      </select></label>
+    </div>
+    <div id="grid"></div>
+    <p class="note muted" id="sets-note"></p>
+  </aside>
+  <section id="viewer">
+    <div class="controls">
+      <fieldset>
+        <legend>Heatmap</legend>
+        <label>Map <select id="c-map">
+          <option value="fm_inbreast">Mammo-FM · INbreast calibrator</option>
+          <option value="fm_vindr">Mammo-FM · VinDr calibrator</option>
+          <option value="a1">A1 · raw score (uncalibrated)</option>
+          <option value="none">none</option>
+        </select></label>
+        <label>Prevalence <select id="c-view"></select></label>
+        <label>Heat <select id="c-heat"><option value="full">whole map</option><option value="boxes">inside boxes</option></select></label>
+      </fieldset>
+      <fieldset>
+        <legend>Candidates</legend>
+        <label>Rank by <select id="c-score"></select></label>
+        <label>k <input id="c-k" type="range" min="0" max="20" value="5"><output id="o-k">5</output></label>
+        <label class="check"><input id="c-ghost" type="checkbox"> A1's top-k (dashed)</label>
+        <label class="check"><input id="c-ranks" type="checkbox" checked> ranks</label>
+      </fieldset>
+      <fieldset>
+        <legend>Display</legend>
+        <label>Colormap <select id="c-cmap"></select></label>
+        <label>Opacity <input id="c-alpha" type="range" min="0" max="1" step="0.05" value="0.6"><output id="o-alpha">0.60</output></label>
+        <label>Scale <select id="c-scale"><option value="log">log</option><option value="linear">linear</option><option value="rel">relative to image max</option></select></label>
+        <label>Log floor <select id="c-floor"><option>0.0001</option><option selected>0.001</option><option>0.01</option></select></label>
+        <label class="check"><input id="c-outline" type="checkbox" checked> mass outline</label>
+      </fieldset>
+    </div>
+    <div class="stage">
+      <canvas id="canvas"></canvas>
+      <div class="side">
+        <canvas id="bar" width="28" height="260"></canvas>
+        <div id="bar-labels"></div>
+      </div>
+    </div>
+    <div id="info"></div>
+    <div class="tables">
+      <table id="places"></table>
+      <div id="detail"></div>
+    </div>
+    <details class="about">
+      <summary>What am I looking at?</summary>
+      <ul>
+        <li><b>A1</b> is the frozen M-SYNTH-trained lesion heatmap (2.7 mm cells). Its top-20 peaks, at least 10 mm apart, are the candidates.
+          A candidate <b>hits</b> when its centre is within 4 mm of the annotated mass.</li>
+        <li><b>Concept model</b>: a ResNet-50 on a 40 mm crop around each candidate, trained on CBIS Mass-Training. It gives
+          mass present, shape, margin and size. Malignancy comes from a logistic head on those predicted concepts.</li>
+        <li><b>Mammo-FM probe</b>: a logistic probe (mass present) on frozen Mammo-FM embeddings pooled over 20 and 40 mm boxes,
+          fitted on CBIS Mass-Training. The same probe, applied at every cell of Mammo-FM's feature map, gives the <b>Mammo-FM heatmap</b>.</li>
+        <li><b>Fusions</b> add standardised scores, <code>z/sd + a·other/sd</code>. The weights were chosen on CBIS validation patients and then fixed.
+          CBIS Mass-Test is in-site for everything fitted on CBIS. TOMPEI and DMID are external.</li>
+        <li><b>Calibration</b> gives the pixel lesion probability at a declared image prevalence.
+          The Mammo-FM calibrators were fitted on the INbreast cal half (outline labels) or on the VinDr training split (box ellipses, about 1.7× more lesion pixels).
+          Use INbreast's for outline-scored sets like these. A1 is shown as its raw score, sigmoid(z), on the relative scale. Its M-SYNTH calibrator does not transfer: on real images it flattens the map and runs about 20× too cold (INbreast pixel O/E 24).</li>
+        <li>Probabilities shown for single candidates (concept, probe) are raw model outputs at the training base rate, not calibrated.</li>
+      </ul>
+    </details>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+/* additions to the M-SYNTH viewer's style.css (copied in as base.css) */
+fieldset legend { font-size: 11px; color: var(--muted); padding: 0 4px; text-transform: uppercase; letter-spacing: .04em; }
+.filters label.wide { grid-column: 1 / -1; }
+#grid { grid-template-columns: repeat(2, 1fr); }
+#grid img { aspect-ratio: auto; }
+.note { font-size: 12px; margin: 14px 0 6px; }
+table.auroc { font-size: 12px; margin-bottom: 12px; }
+table.auroc td, table.auroc th { padding: 2px 6px; }
+.tables { display: flex; flex-wrap: wrap; gap: 16px 28px; align-items: flex-start; }
+#places tr[data-k] { cursor: pointer; }
+#places tr[data-k]:hover td { background: color-mix(in srgb, var(--sel) 10%, transparent); }
+#places tr.on td { background: color-mix(in srgb, var(--sel) 22%, transparent); }
+#detail { min-width: 260px; max-width: 380px; font-size: 13px; }
+#detail h3 { font-size: 14px; margin: 0 0 6px; }
+#detail h4 { font-size: 12px; margin: 10px 0 4px; color: var(--muted); font-weight: 600; }
+#detail p { margin: 4px 0; }
+.bar-row { display: grid; grid-template-columns: 150px 1fr 40px; align-items: center; gap: 6px; font-size: 12px; }
+.bar-row i { display: block; height: 9px; background: var(--sel); border-radius: 2px; min-width: 1px; }
+.bar-row b { font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+.about { margin-top: 18px; font-size: 13px; max-width: 900px; }
+.about summary { cursor: pointer; color: var(--sel); }
+.about li { margin: 4px 0; }
+code { font-size: 12px; }
+@media (max-width: 760px) {
+  #grid { grid-template-columns: repeat(3, 1fr); }
+  .bar-row { grid-template-columns: 110px 1fr 36px; }
+}
