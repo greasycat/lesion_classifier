@@ -111,8 +111,69 @@ function normFn(s, mx) {
   return (p) => (p <= 0 ? 0 : Math.min(Math.max((Math.log10(p) - lo) / (hi - lo), 0), 1));
 }
 
+// ---------------------------------------------------------------- places (boxes)
+// As msynth_heatmap.top_places: box = bounding box of the connected region around the peak where p >= half the peak's
+// p and the pixel is nearer this peak than any other peak of the same source, within 15 mm, at least one 2.7 mm cell
+// wide. p = the source's own map (A1: raw sigmoid(z); Mammo-FM: the 5 + 10 mm map, INbreast calibrator, current view).
+// In the chosen ranking, a peak whose centre falls inside an earlier box, or inside an earlier peak's half-max blob, is
+// dropped (one box per blob).
+const BOX_FRAC = 0.5, BOX_MAX_MM = 15, MIN_MM = 2.72;
+const boxCache = new Map();
+
+// connected region (8-neighbour) around (r, q) where P >= thr and keep(y, x), inside the window; returns its pixels' bbox
+// and a membership test
+function region(it, P, r, q, thr, R, keep) {
+  const W = it.w, H = it.h;
+  const r0 = Math.max(r - R, 0), r1 = Math.min(r + R, H - 1), c0 = Math.max(q - R, 0), c1 = Math.min(q + R, W - 1);
+  const w = c1 - c0 + 1, seen = new Uint8Array((r1 - r0 + 1) * w), stack = [[r, q]];
+  seen[(r - r0) * w + (q - c0)] = 1;
+  let y0 = r, y1 = r, x0 = q, x1 = q;
+  while (stack.length) {
+    const [y, x] = stack.pop();
+    y0 = Math.min(y0, y); y1 = Math.max(y1, y); x0 = Math.min(x0, x); x1 = Math.max(x1, x);
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const yy = y + dy, xx = x + dx;
+      if (yy < r0 || yy > r1 || xx < c0 || xx > c1) continue;
+      const k = (yy - r0) * w + (xx - c0);
+      if (seen[k] || !(P[yy * W + xx] >= thr) || !keep(yy, xx)) continue;
+      seen[k] = 1; stack.push([yy, xx]);
+    }
+  }
+  const has = (y, x) => { y = Math.round(y); x = Math.round(x); return y >= r0 && y <= r1 && x >= c0 && x <= c1 && seen[(y - r0) * w + (x - c0)] === 1; };
+  return { bbox: [y0, x0, y1 + 1, x1 + 1], has };
+}
+
+function boxOf(it, P, c, all) {
+  const W = it.w, H = it.h, R = Math.round(BOX_MAX_MM / it.px_mm), half = Math.ceil(MIN_MM / it.px_mm / 2);
+  const r = Math.min(Math.max(Math.round(c.y), 0), H - 1), q = Math.min(Math.max(Math.round(c.x), 0), W - 1);
+  let box = [r - half, q - half, r + half, q + half];
+  const pk = P[r * W + q];
+  let blob = null;
+  if (pk > 0) {
+    const thr = BOX_FRAC * pk;
+    const others = all.filter((o) => o !== c && Math.abs(o.y - r) <= 3 * R && Math.abs(o.x - q) <= 3 * R);
+    const own = (y, x) => { const d = (y - r) ** 2 + (x - q) ** 2; return others.every((o) => d <= (y - o.y) ** 2 + (x - o.x) ** 2); };
+    const [y0, x0, y1, x1] = region(it, P, r, q, thr, R, own).bbox;
+    box = [Math.min(y0, r - half), Math.min(x0, q - half), Math.max(y1, r + half), Math.max(x1, q + half)];
+    blob = region(it, P, r, q, thr, R, () => true).has;           // the whole half-max blob, for suppression
+  }
+  return { box, blob };
+}
+
+function places(it, score, src, view, mask) {
+  const key = `${it.id}|${score}|${src}|${src === "fm" ? view : ""}`;
+  if (boxCache.has(key)) return boxCache.get(key);
+  const P = calibrated(it, src === "fm" ? "fm_inbreast" : "a1", view, mask).q, all = pts(it, src), out = [];
+  for (const o of ranked(it, score, src)) {
+    if (out.some(({ box: b, blob }) => (o.c.y >= b[0] && o.c.y < b[2] && o.c.x >= b[1] && o.c.x < b[3]) || (blob && blob(o.c.y, o.c.x)))) continue;
+    const { box, blob } = boxOf(it, P, o.c, all);
+    out.push({ ...o, rank: out.length + 1, box, blob });
+  }
+  boxCache.set(key, out);
+  return out;
+}
+
 // ---------------------------------------------------------------- drawing
-const boxPx = (it) => META.box_mm / it.px_mm;
 
 async function draw() {
   if (!cur) return;
@@ -122,19 +183,15 @@ async function draw() {
   const W = it.w, H = it.h, cv = $("canvas");
   cv.width = W; cv.height = H;
   const g = cv.getContext("2d"), out = g.createImageData(W, H), o = out.data;
-  const R = ranked(it, s.score, s.src), shown = R.slice(0, s.k);
+  const R = places(it, s.score, s.src, s.view, mask), shown = R.slice(0, s.k);
   const heat = s.map !== "none" ? calibrated(it, s.map, s.view, mask) : null;
   const norm = heat ? normFn(s, heat.max) : null, lut = META.cmaps[s.cmap];
   const [lo] = heat ? normRange(s, heat.max) : [0];
   let inBox = null;
   if (heat && s.heat === "boxes") {
     inBox = new Uint8Array(W * H);
-    const b = boxPx(it) / 2;
-    for (const { c } of shown) {
-      const r0 = Math.max(Math.round(c.y - b), 0), r1 = Math.min(Math.round(c.y + b), H);
-      const c0 = Math.max(Math.round(c.x - b), 0), c1 = Math.min(Math.round(c.x + b), W);
-      for (let r = r0; r < r1; r++) inBox.fill(1, r * W + c0, r * W + c1);
-    }
+    for (const { box: [r0, c0, r1, c1] } of shown)
+      for (let r = Math.max(r0, 0); r < Math.min(r1, H); r++) inBox.fill(1, r * W + Math.max(c0, 0), r * W + Math.min(c1, W));
   }
   for (let i = 0, j = 0; i < W * H; i++, j += 4) {
     const y = gray[j];
@@ -152,21 +209,21 @@ async function draw() {
     g.strokeStyle = "cyan"; g.lineWidth = lw;
     for (const poly of it.outline) { g.beginPath(); poly.forEach(([r, c], k) => (k ? g.lineTo(c, r) : g.moveTo(c, r))); g.closePath(); g.stroke(); }
   }
-  const b = boxPx(it);
   if (s.ghost && (s.score !== "z" || s.src !== "a1")) {
     g.setLineDash([5, 4]); g.strokeStyle = "rgba(255,255,255,.75)"; g.lineWidth = lw;
-    for (const { c } of ranked(it, "z").slice(0, s.k)) g.strokeRect(c.x - b / 2, c.y - b / 2, b, b);
+    for (const { box: [r0, c0, r1, c1] } of places(it, "z", "a1", s.view, mask).slice(0, s.k)) g.strokeRect(c0, r0, c1 - c0, r1 - r0);
     g.setLineDash([]);
   }
   g.font = `bold ${fs}px system-ui`;
-  for (const { c, rank } of shown) {
+  for (const { c, rank, box: [r0, c0, r1, c1] } of shown) {
     const hitCol = !it.lesions.length || !s.outline ? "#ff3b30" : c.hit ? "#34c759" : "#ff3b30";
     g.strokeStyle = g.fillStyle = hitCol; g.lineWidth = c === sel ? lw * 2.5 : lw;
-    g.strokeRect(c.x - b / 2, c.y - b / 2, b, b);
-    if (s.ranks) g.fillText(String(rank), c.x + b / 2 + 3, c.y - b / 2 + fs);
+    g.strokeRect(c0, r0, c1 - c0, r1 - r0);
+    g.beginPath(); g.arc(c.x, c.y, lw * 1.5, 0, 2 * Math.PI); g.fill();
+    if (s.ranks) g.fillText(String(rank), c1 + 3, r0 + fs);
   }
   drawBar(s, heat);
-  info(s, it, R, heat);
+  info(s, it, R, heat, mask);
   hint(s, it, heat);
   table(s, it, R);
   detail(it);
@@ -190,14 +247,14 @@ function drawBar(s, heat) {
   }
 }
 
-function info(s, it, R, heat) {
+function info(s, it, R, heat, mask) {
   const set = META.sets[it.set].name;
   let t = `${set} · ${it.view} · ${it.image}`;
   if (it.lesions.length) {
     const L = it.lesions[0];
     t += ` · mass ${L.r_mm} mm radius` + (L.shape ? `, ${nice(L.shape)}` : "") + (L.margins ? `, ${nice(L.margins)}` : "") +
       (L.pathology ? `, ${nice(L.pathology)}` : "") + (L.label && L.label !== "mass" ? ` (${L.label})` : "");
-    const first = R.find((o) => o.c.hit), a1 = ranked(it, "z").find((o) => o.c.hit);
+    const first = R.find((o) => o.c.hit), a1 = places(it, "z", "a1", s.view, mask).find((o) => o.c.hit);
     t += ` · first hit: rank ${first ? first.rank : "none in top 20"}` + (s.score !== "z" || s.src !== "a1" ? ` (A1 alone: ${a1 ? a1.rank : "none"})` : "");
   } else t += " · normal breast";
   if (heat) t += s.map === "a1" ? ` · A1 map max sigmoid(z) ${fmtP(heat.max)} (uncalibrated)` :
@@ -210,9 +267,10 @@ function table(s, it, R) {
   const rows = R.slice(0, Math.max(s.k, 1));
   const a1r = new Map(ranked(it, native(s.src), s.src).map((o) => [o.c, o.rank]));
   T.innerHTML = `<tr><th>rank</th><th>${s.src === "fm" ? "peak rank" : "A1 rank"}</th><th>${META.scorers[s.score]}</th><th>A1 z${s.src === "fm" ? " (cell)" : ""}</th><th>concept p(mass)</th>` +
-    `<th>Mammo-FM p(mass) 5+10</th><th>20+40</th>${it.lesions.length ? "<th>hit</th>" : ""}</tr>` +
-    rows.map(({ c, s: v, rank }) => `<tr data-k="${c.k}" class="${c === sel ? "on" : ""}"><td>${rank}</td><td>${a1r.get(c)}</td>` +
+    `<th>Mammo-FM p(mass) 5+10</th><th>20+40</th><th>box (mm)</th>${it.lesions.length ? "<th>hit</th>" : ""}</tr>` +
+    rows.map(({ c, s: v, rank, box }) => `<tr data-k="${c.k}" class="${c === sel ? "on" : ""}"><td>${rank}</td><td>${a1r.get(c)}</td>` +
       `<td>${v.toFixed(2)}</td><td>${c.z.toFixed(2)}</td><td>${fmtP(sigmoid(c.pc))}</td><td>${fmtP(sigmoid(c.probe_small))}</td><td>${fmtP(sigmoid(c.probe_mammofm))}</td>` +
+      `<td>${Math.round((box[2] - box[0]) * it.px_mm)} × ${Math.round((box[3] - box[1]) * it.px_mm)}</td>` +
       (it.lesions.length ? `<td>${c.hit ? "✓" : ""}</td>` : "") + "</tr>").join("");
   for (const tr of T.querySelectorAll("tr[data-k]")) tr.onclick = () => { const c = pts(it, s.src)[+tr.dataset.k - 1]; sel = sel === c ? null : c; draw(); };
 }
