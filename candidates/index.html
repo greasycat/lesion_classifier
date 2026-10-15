@@ -64,7 +64,7 @@
     <p id="hint" class="hint"></p>
     <div class="layout">
       <div class="main-col">
-        <div class="strip-wrap"><table id="places"></table></div>
+        <div id="say"></div>
         <div class="stage">
           <canvas id="canvas"></canvas>
           <div class="side">
@@ -92,7 +92,11 @@
           nearer this peak than any other peak, at most 15 mm from it (so at most 30 mm across), at least one 2.7 mm cell wide.
           The source map is A1's raw score for A1's candidates, and the calibrated 5 + 10 mm Mammo-FM map (INbreast calibrator, chosen prevalence) for Mammo-FM's peaks.
           Going down the chosen ranking, a peak whose centre falls inside an earlier box, or inside an earlier peak's half-max region, is skipped, so one blob gets one box. Mammo-FM's peaks are the local maxima of its map, strongest first, at least 10 mm apart.
-          The dot is the peak, and a box is green when its peak lies within 4 mm of the mass.</li>
+          The dot is the peak, and a box is green when its peak lies within 4 mm of the mass. Click a box to select it.</li>
+        <li><b>Text above the image</b>: a plain-language paraphrase of the selected box, written ahead of time by a local LLM (Qwen3-30B-A3B)
+          from that box's model outputs only: the Mammo-FM and concept-model mass probabilities, A1's score, and the concept model's reading.
+          Every text was checked: its probabilities must match the inputs, it may use only the shape and margin words given, and it may not mention BI-RADS, recommendations or diagnoses.
+          A text that failed was replaced by a template sentence (marked "template"). The LLM never sees the image or the annotation.</li>
         <li><b>Boxes vs heatmap</b>: re-ranking only reorders the places the box source proposed. With A1's candidates on the Mammo-FM map,
           the boxes sit where A1 peaked, which is often not where Mammo-FM is hot: in this sample Mammo-FM's hottest spot is more than 10 mm from every A1 candidate in about 44 % of images.
           By default the boxes are the peaks of the 5 + 10 mm Mammo-FM map (same 10 mm separation rule), so boxes and heatmap agree; switch <i>Boxes</i> to A1's candidates to see A1 re-ranked. The concept model reads those peaks too,

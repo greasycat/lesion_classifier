@@ -9,14 +9,6 @@ table.auroc { font-size: 12px; margin-bottom: 12px; }
 table.auroc td, table.auroc th { padding: 2px 6px; }
 .layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
 .main-col { min-width: 0; }
-.strip-wrap { overflow-x: auto; margin-bottom: 8px; }
-#places { font-size: 13px; }
-#places th { text-align: left; color: var(--muted); font-weight: 500; padding: 3px 8px 3px 0; white-space: nowrap; }
-#places td { text-align: center; padding: 3px 8px; min-width: 44px; cursor: pointer; border-bottom: 1px solid var(--line); }
-#places td:hover { background: color-mix(in srgb, var(--sel) 10%, transparent); }
-#places td.on { background: color-mix(in srgb, var(--sel) 22%, transparent); }
-#places td.hit b { color: #1f9d45; }
-#places td.miss b { color: #d93025; }
 #canvas { cursor: pointer; }
 #detail { font-size: 13px; position: sticky; top: 8px; border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; background: var(--panel); }
 table.kv { width: 100%; font-size: 12px; margin-bottom: 6px; }
@@ -40,3 +32,11 @@ code { font-size: 12px; }
   #grid { grid-template-columns: repeat(3, 1fr); }
   .bar-row { grid-template-columns: 110px 1fr 36px; }
 }
+#say { border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; margin-bottom: 8px; background: var(--panel); font-size: 14px; min-height: 4.5em; }
+#say p { margin: 4px 0 0; line-height: 1.45; }
+#say .say-head { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+#say .say-head b { color: var(--ink); }
+#say .src { margin-left: auto; font-size: 11px; }
+#say .hit { color: #1f9d45; font-weight: 600; }
+#say .miss { color: #d93025; font-weight: 600; }
+.small { font-size: 12px; }

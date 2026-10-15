@@ -5,7 +5,7 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
 const GAMMA = 0.5, EPS = 1e-7;
-let DATA, META, cur = null, sel = null;
+let DATA, META, TEXT = null, cur = null, sel = null;
 const imgCache = new Map(), qCache = new Map();
 
 const sigmoid = (x) => 1 / (1 + Math.exp(-x));
@@ -225,7 +225,7 @@ async function draw() {
   drawBar(s, heat);
   info(s, it, R, heat, mask);
   hint(s, it, heat);
-  table(s, it, R);
+  say(s, it, R);
   detail(s, it, R);
   cv.onclick = (e) => {                                  // click a box to select it
     const rc = cv.getBoundingClientRect(), x = ((e.clientX - rc.left) * W) / rc.width, y = ((e.clientY - rc.top) * H) / rc.height;
@@ -271,15 +271,16 @@ function info(s, it, R, heat, mask) {
 const PROB_SCORERS = new Set(["z", "pc", "probe_small", "probe_mammofm"]);
 const shownValue = (score, v) => (PROB_SCORERS.has(score) ? fmtP(sigmoid(v)) : v.toFixed(2));
 
-function table(s, it, R) {
-  const T = $("places");
-  const rows = R.slice(0, Math.max(s.k, 1));
-  const isP = PROB_SCORERS.has(s.score);
-  const cls = (c) => (it.lesions.length && s.outline ? (c.hit ? "hit" : "miss") : "");
-  T.innerHTML = `<tr><th>rank</th>${rows.map(({ c, rank }) => `<td data-k="${c.k}" class="${cls(c)}${c === focus(R, s) ? " on" : ""}"><b>${rank}</b></td>`).join("")}</tr>` +
-    `<tr><th title="${META.scorers[s.score]}">${isP ? "p(mass)" : "score"}</th>${rows.map(({ c, s: v }) =>
-      `<td data-k="${c.k}" class="${c === focus(R, s) ? "on" : ""}">${shownValue(s.score, v)}</td>`).join("")}</tr>`;
-  for (const td of T.querySelectorAll("td[data-k]")) td.onclick = () => { sel = pts(it, s.src)[+td.dataset.k - 1]; draw(); };
+// LLM paraphrase of the selected place (site/paraphrase_candidates.py), above the image
+function say(s, it, R) {
+  const S = $("say"), c = focus(R, s);
+  if (!c) { S.innerHTML = ""; return; }
+  const o = R.find((x) => x.c === c), t = TEXT?.[it.id]?.[s.src]?.[c.k - 1];
+  const tag = !t ? "" : t.llm ? '<span class="src">LLM paraphrase · checked against the numbers</span>' : '<span class="src">template</span>';
+  const hitTag = it.lesions.length && s.outline ? (c.hit ? '<span class="hit">hits the mass</span>' : '<span class="miss">misses the mass</span>') : "";
+  S.innerHTML = `<div class="say-head"><b>Rank ${o.rank}</b> of ${Math.min(s.k, R.length)} · ${s.src === "fm" ? "Mammo-FM peak" : "A1 candidate"} ${hitTag}${tag}</div>` +
+    `<p>${t ? t.text : "No text for this box."}</p>` +
+    (R.length > 1 && s.k > 1 ? '<p class="muted small">Click another box on the image to read about it.</p>' : "");
 }
 
 // the selected place if it is shown, else rank 1
@@ -365,6 +366,7 @@ function setsNote() {
 async function init() {
   const j = await (await fetch("data/items.json")).json();
   DATA = j.items; META = j.meta;
+  try { TEXT = await (await fetch("data/text.json")).json(); } catch (e) { TEXT = null; }
   for (const it of DATA) it.case = caseOf(it);
   fillSelect($("f-set"), Object.entries(META.sets).map(([k, v]) => [k, v.name]));
   fillSelect($("c-view"), Object.entries(META.views).map(([k, v]) => [k, `${Math.round(v * 100)} %`]));
