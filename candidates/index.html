@@ -46,7 +46,7 @@
       </fieldset>
       <fieldset>
         <legend>Candidates</legend>
-        <label>Boxes <select id="c-src"><option value="fm" selected>Mammo-FM's top-20 map peaks</option><option value="a1">A1's top-20 candidates</option><option value="det">Mammo-FM detector's top-20 boxes</option></select></label>
+        <label>Boxes <select id="c-src"><option value="det" selected>Mammo-FM detector's top-20 boxes</option><option value="fm">Mammo-FM's top-20 map peaks</option><option value="a1">A1's top-20 candidates</option></select></label>
         <label>Rank by <select id="c-score"></select></label>
         <label>k <input id="c-k" type="range" min="0" max="20" value="5"><output id="o-k">5</output></label>
         <label class="check"><input id="c-ghost" type="checkbox"> A1's top-k (dashed)</label>
@@ -96,7 +96,7 @@
         <li><b>One model per box source.</b> A1's candidates are read by the <b>concept model</b> (A1 proposes, the concept model describes).
           Mammo-FM's peaks are read by <b>Mammo-FM</b> alone: its mass probability (5 + 10 mm probe) and its own shape, margin, size and malignancy probes
           (fitted on CBIS Mass-Training with 20 + 40 mm embeddings). Switching <i>Boxes</i> switches the reading model, the text and the bars.</li>
-        <li><b>Mammo-FM detector</b> (<i>Boxes</i> → detector): the Mammo-FM authors' RetinaNet head (feature pyramid + box and class heads) on the frozen
+        <li><b>Mammo-FM detector</b> (default box source): the Mammo-FM authors' RetinaNet head (feature pyramid + box and class heads) on the frozen
           Mammo-FM image encoder, trained by us on CBIS Mass-Training mass boxes (the authors released the code but no trained detector). Its boxes are drawn
           as predicted, ranked by its box score, at most 20 after non-maximum suppression; a box whose centre falls inside an earlier box is skipped; a box is green when its centre lies within 4 mm of the mass.
           Mammo-FM's probes read each box at its centre. On whole test sets (box centre within 4 mm), its top box hits the mass in 0.77 of CBIS Mass-Test, 0.75 of TOMPEI, 0.76 of DMID and 0.68 of VinDr test mass images, against 0.44–0.60 for Mammo-FM's map peaks and 0.24–0.50 for A1 (<code>research/experiments/fm_detect</code>). Its box score is a focal-loss score, not a probability.</li>
@@ -107,8 +107,7 @@
         <li><b>True label</b> (right panel): the annotated mass (radius, shape, margin, pathology where the dataset gives them) and whether this box hits it.</li>
         <li><b>Boxes vs heatmap</b>: re-ranking only reorders the places the box source proposed. With A1's candidates on the Mammo-FM map,
           the boxes sit where A1 peaked, which is often not where Mammo-FM is hot: in this sample Mammo-FM's hottest spot is more than 10 mm from every A1 candidate in about 44 % of images.
-          By default the boxes are the peaks of the 5 + 10 mm Mammo-FM map (same 10 mm separation rule), so boxes and heatmap agree; switch <i>Boxes</i> to A1's candidates to see A1 re-ranked. The concept model reads those peaks too,
-          and A1's score there is its cell value. The fusion weights were chosen on A1's candidates, so applying them to Mammo-FM peaks is an extrapolation.</li>
+          By default the boxes are Mammo-FM's detector boxes on the Mammo-FM map; Mammo-FM's map peaks (same 10 mm separation rule) make boxes and heatmap agree exactly; switch <i>Boxes</i> to A1's candidates to see A1 re-ranked. When Mammo-FM peaks are ranked by a fusion, A1's score at a peak is its cell value; the fusion weights were chosen on A1's candidates, so applying them to Mammo-FM peaks is an extrapolation.</li>
         <li><b>Fusions</b> add standardised scores, <code>z/sd + a·other/sd</code>. The weights were chosen on CBIS validation patients and then fixed.
           CBIS Mass-Test is in-site for everything fitted on CBIS. TOMPEI and DMID are external.</li>
         <li><b>Calibration</b> gives the pixel lesion probability at a declared image prevalence.
