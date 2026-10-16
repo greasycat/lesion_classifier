@@ -46,7 +46,7 @@
       </fieldset>
       <fieldset>
         <legend>Candidates</legend>
-        <label>Boxes <select id="c-src"><option value="fm" selected>Mammo-FM's top-20 map peaks</option><option value="a1">A1's top-20 candidates</option></select></label>
+        <label>Boxes <select id="c-src"><option value="fm" selected>Mammo-FM's top-20 map peaks</option><option value="a1">A1's top-20 candidates</option><option value="det">Mammo-FM detector's top-20 boxes</option></select></label>
         <label>Rank by <select id="c-score"></select></label>
         <label>k <input id="c-k" type="range" min="0" max="20" value="5"><output id="o-k">5</output></label>
         <label class="check"><input id="c-ghost" type="checkbox"> A1's top-k (dashed)</label>
@@ -96,6 +96,10 @@
         <li><b>One model per box source.</b> A1's candidates are read by the <b>concept model</b> (A1 proposes, the concept model describes).
           Mammo-FM's peaks are read by <b>Mammo-FM</b> alone: its mass probability (5 + 10 mm probe) and its own shape, margin, size and malignancy probes
           (fitted on CBIS Mass-Training with 20 + 40 mm embeddings). Switching <i>Boxes</i> switches the reading model, the text and the bars.</li>
+        <li><b>Mammo-FM detector</b> (<i>Boxes</i> → detector): the Mammo-FM authors' RetinaNet head (feature pyramid + box and class heads) on the frozen
+          Mammo-FM image encoder, trained by us on CBIS Mass-Training mass boxes (the authors released the code but no trained detector). Its boxes are drawn
+          as predicted, ranked by its box score, at most 20 after non-maximum suppression; a box whose centre falls inside an earlier box is skipped; a box is green when its centre lies within 4 mm of the mass.
+          Mammo-FM's probes read each box at its centre. On whole test sets (box centre within 4 mm), its top box hits the mass in 0.77 of CBIS Mass-Test, 0.75 of TOMPEI, 0.76 of DMID and 0.68 of VinDr test mass images, against 0.44–0.60 for Mammo-FM's map peaks and 0.24–0.50 for A1 (<code>research/experiments/fm_detect</code>). Its box score is a focal-loss score, not a probability.</li>
         <li><b>Text above the image</b>: a plain-language paraphrase of the selected box by the reading model, written ahead of time by a local LLM (Qwen3-30B-A3B)
           from that one model's outputs only. Every text was checked: its probabilities must match the inputs, it may use only the shape and margin words given,
           name no other model, and mention no BI-RADS category, recommendation or diagnosis. A text that failed was replaced by a template sentence (marked "template").

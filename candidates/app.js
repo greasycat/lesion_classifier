@@ -36,11 +36,15 @@ function score(c, name) {
   return s;
 }
 
-const pts = (it, src) => (src === "fm" ? it.fm_cands : it.cands);
-const native = (src) => (src === "fm" ? "probe_small" : "z");
+const pts = (it, src) => ({ fm: it.fm_cands, det: it.det_cands || [] }[src] || it.cands);
+const native = (src) => ({ fm: "probe_small", det: "det" }[src] || "z");
+const SRC_NAME = { a1: "A1 candidate", fm: "Mammo-FM peak", det: "Mammo-FM detector box" };
+const SRC_PLURAL = { a1: "A1's candidates", fm: "Mammo-FM's peaks", det: "Mammo-FM's detector boxes" };
 
 function ranked(it, name, src = "a1") {
-  return pts(it, src).map((c) => ({ c, s: score(c, name) })).sort((a, b) => b.s - a.s).map((o, i) => ({ ...o, rank: i + 1 }));
+  const all = pts(it, src);
+  if (all.length && !(name in all[0]) && !(name in META.fusion)) name = native(src);   // e.g. detector score on A1's points
+  return all.map((c) => ({ c, s: score(c, name) })).sort((a, b) => b.s - a.s).map((o, i) => ({ ...o, rank: i + 1 }));
 }
 
 function caseOf(it) {
@@ -163,6 +167,15 @@ function boxOf(it, P, c, all) {
 function places(it, score, src, view, mask) {
   const key = `${it.id}|${score}|${src}|${src === "fm" ? view : ""}`;
   if (boxCache.has(key)) return boxCache.get(key);
+  if (src === "det") {           // the detector's own boxes (NMS at IoU 0.5); a box centred inside an earlier box is skipped
+    const out = [];
+    for (const o of ranked(it, score, src)) {
+      if (out.some(({ box: b }) => o.c.y >= b[0] && o.c.y < b[2] && o.c.x >= b[1] && o.c.x < b[3])) continue;
+      out.push({ ...o, rank: out.length + 1, box: o.c.box, blob: null });
+    }
+    boxCache.set(key, out);
+    return out;
+  }
   const P = calibrated(it, src === "fm" ? "fm_inbreast" : "a1", view, mask).q, all = pts(it, src), out = [];
   for (const o of ranked(it, score, src)) {
     if (out.some(({ box: b, blob }) => (o.c.y >= b[0] && o.c.y < b[2] && o.c.x >= b[1] && o.c.x < b[3]) || (blob && blob(o.c.y, o.c.x)))) continue;
@@ -275,7 +288,7 @@ function say(s, it, R) {
   const o = R.find((x) => x.c === c), t = TEXT?.[it.id]?.[s.src]?.[c.k - 1];
   const tag = !t ? "" : t.llm ? '<span class="src">LLM paraphrase · checked against the numbers</span>' : '<span class="src">template</span>';
   const hitTag = it.lesions.length && s.outline ? (c.hit ? '<span class="hit">hits the mass</span>' : '<span class="miss">misses the mass</span>') : "";
-  S.innerHTML = `<div class="say-head"><b>Rank ${o.rank}</b> of ${Math.min(s.k, R.length)} · ${s.src === "fm" ? "Mammo-FM peak" : "A1 candidate"} ${hitTag}${tag}</div>` +
+  S.innerHTML = `<div class="say-head"><b>Rank ${o.rank}</b> of ${Math.min(s.k, R.length)} · ${SRC_NAME[s.src]} ${hitTag}${tag}</div>` +
     `<p>${t ? t.text : "No text for this box."}</p>` +
     (R.length > 1 && s.k > 1 ? '<p class="muted small">Click another box on the image to read about it.</p>' : "");
 }
@@ -297,23 +310,26 @@ const READER = {
   fm: { name: "Mammo-FM", p: "probe_small", shape: "fm_shape", margin: "fm_margin", size: "fm_size_mm", malig: "fm_malig",
         maligNote: "malignancy probe", note: "Probes on frozen Mammo-FM embeddings, fitted on CBIS Mass-Training: mass present on 5 + 10 mm boxes, the rest on 20 + 40 mm boxes." },
 };
+READER.det = { ...READER.fm, note: "Box from Mammo-FM's RetinaNet detector (the authors' head on the frozen Mammo-FM encoder, trained on CBIS Mass-Training boxes); read by the Mammo-FM probes at the box centre: " +
+  "mass present on 5 + 10 mm boxes, the rest on 20 + 40 mm boxes." };
 
-function trueLabel(it, c) {
+function trueLabel(it, c) {  // c.box: a detector box (hit = its centre), else a peak
   if (!it.lesions.length) return '<p>No mass annotated (normal breast): every box here is a false alarm.</p>';
   const L = it.lesions[0];
   const desc = [L.shape && nice(L.shape), L.margins && `${nice(L.margins)} margins`, L.pathology && nice(L.pathology),
     L.label && L.label !== "mass" && L.label].filter(Boolean).join(", ");
   return `<p>Annotated mass: ${L.r_mm} mm radius${desc ? ", " + desc : ""}.</p>` +
-    `<p class="${c.hit ? "hit" : "miss"}">This box ${c.hit ? "hits the mass (its peak is within 4 mm)" : "misses the mass"}.</p>`;
+    `<p class="${c.hit ? "hit" : "miss"}">This box ${c.hit ? "hits the mass (its " + (c.box ? "centre" : "peak") + " is within 4 mm)" : "misses the mass"}.</p>`;
 }
 
 function detail(s, it, R) {
   const D = $("detail"), c = focus(R, s);
   if (!c) { D.innerHTML = '<p class="muted">No places.</p>'; return; }
   const o = R.find((x) => x.c === c), M = READER[s.src], b = o.box;
-  D.innerHTML = `<h3>Rank ${o.rank} · ${s.src === "fm" ? "Mammo-FM peak" : "A1 candidate"}</h3>` +
+  D.innerHTML = `<h3>Rank ${o.rank} · ${SRC_NAME[s.src]}</h3>` +
     `<h4>True label</h4>${trueLabel(it, c)}` +
     `<h4>${M.name} reading</h4>` +
+    (s.src === "det" ? `<p>detector box score <b>${c.det.toFixed(3)}</b> <span class="muted">(focal-loss score, not a probability)</span></p>` : "") +
     `<p>mass probability <b>${fmtP(sigmoid(c[M.p]))}</b> · size ≈ ${c[M.size]} mm radius · malignancy ${c[M.malig].toFixed(2)} ` +
     `<span class="muted">(${M.maligNote})</span> · box ${Math.round((b[2] - b[0]) * it.px_mm)} × ${Math.round((b[3] - b[1]) * it.px_mm)} mm</p>` +
     `<h4>Shape</h4>${bars(META.shapes, c[M.shape])}<h4>Margin</h4>${bars(META.margins, c[M.margin])}` +
@@ -330,7 +346,7 @@ function hint(s, it, heat) {
   const y = Math.floor(mi / it.w), x = mi % it.w;
   const d = Math.min(...pts(it, s.src).map((c) => Math.hypot(c.y - y, c.x - x))) * it.px_mm;
   const what = s.map === "a1" ? "A1" : "Mammo-FM";
-  H.textContent = `Boxes are ${s.src === "fm" ? "Mammo-FM's peaks" : "A1's candidates"}, heatmap is ${what}: ` +
+  H.textContent = `Boxes are ${SRC_PLURAL[s.src]}, heatmap is ${what}: ` +
     `${what}'s hottest spot is ${Math.round(d)} mm from the nearest box, so no box can land there.`;
   if (d <= 10) H.textContent = "";
 }
@@ -370,9 +386,9 @@ function setsNote() {
 }
 
 function syncSource(map = true, score = true) {
-  const fm = $("c-src").value === "fm";
+  const src = $("c-src").value, fm = src !== "a1";             // the detector's boxes are drawn on Mammo-FM's map
   if (map) $("c-map").value = fm ? ($("c-map").value.startsWith("fm") ? $("c-map").value : "fm_inbreast") : "a1";
-  if (score) $("c-score").value = fm ? "probe_small" : "z";
+  if (score) $("c-score").value = native(src);
 }
 
 async function init() {
@@ -383,7 +399,7 @@ async function init() {
   fillSelect($("f-set"), Object.entries(META.sets).map(([k, v]) => [k, v.name]));
   fillSelect($("c-view"), Object.entries(META.views).map(([k, v]) => [k, `${Math.round(v * 100)} %`]));
   $("c-view").value = "p10";
-  fillSelect($("c-score"), Object.entries(META.scorers));
+  fillSelect($("c-score"), Object.entries(META.scorers).concat([["det", "Mammo-FM detector box score"]]));
   $("c-score").value = "A1+CBM+probe_mammofm";
   fillSelect($("c-cmap"), Object.keys(META.cmaps).map((c) => [c, c]));
   for (const id of ["f-set", "f-lesion", "f-case"]) $(id).onchange = grid;
